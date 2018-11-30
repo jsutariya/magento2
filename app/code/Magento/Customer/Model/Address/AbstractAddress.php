@@ -12,6 +12,7 @@ use Magento\Customer\Api\Data\AddressInterfaceFactory;
 use Magento\Customer\Api\Data\RegionInterface;
 use Magento\Customer\Api\Data\RegionInterfaceFactory;
 use Magento\Customer\Model\Data\Address as AddressData;
+use Magento\Framework\App\ObjectManager;
 use Magento\Framework\Model\AbstractExtensibleModel;
 
 /**
@@ -22,7 +23,7 @@ use Magento\Framework\Model\AbstractExtensibleModel;
  * @method string getFirstname()
  * @method string getMiddlename()
  * @method string getLastname()
- * @method int getCountryId()
+ * @method string getCountryId()
  * @method string getCity()
  * @method string getTelephone()
  * @method string getCompany()
@@ -118,6 +119,9 @@ class AbstractAddress extends AbstractExtensibleModel implements AddressModelInt
      */
     protected $dataObjectHelper;
 
+    /** @var CompositeValidator */
+    private $compositeValidator;
+
     /**
      * @param \Magento\Framework\Model\Context $context
      * @param \Magento\Framework\Registry $registry
@@ -135,6 +139,8 @@ class AbstractAddress extends AbstractExtensibleModel implements AddressModelInt
      * @param \Magento\Framework\Model\ResourceModel\AbstractResource $resource
      * @param \Magento\Framework\Data\Collection\AbstractDb $resourceCollection
      * @param array $data
+     * @param CompositeValidator $compositeValidator
+     *
      * @SuppressWarnings(PHPMD.ExcessiveParameterList)
      */
     public function __construct(
@@ -153,7 +159,8 @@ class AbstractAddress extends AbstractExtensibleModel implements AddressModelInt
         \Magento\Framework\Api\DataObjectHelper $dataObjectHelper,
         \Magento\Framework\Model\ResourceModel\AbstractResource $resource = null,
         \Magento\Framework\Data\Collection\AbstractDb $resourceCollection = null,
-        array $data = []
+        array $data = [],
+        CompositeValidator $compositeValidator = null
     ) {
         $this->_directoryData = $directoryData;
         $data = $this->_implodeArrayField($data);
@@ -165,6 +172,8 @@ class AbstractAddress extends AbstractExtensibleModel implements AddressModelInt
         $this->addressDataFactory = $addressDataFactory;
         $this->regionDataFactory = $regionDataFactory;
         $this->dataObjectHelper = $dataObjectHelper;
+        $this->compositeValidator = $compositeValidator ?: ObjectManager::getInstance()
+            ->get(CompositeValidator::class);
         parent::__construct(
             $context,
             $registry,
@@ -262,8 +271,8 @@ class AbstractAddress extends AbstractExtensibleModel implements AddressModelInt
      * Enforce format of the street field or other multiline custom attributes
      *
      * @param array|string $key
-     * @param null $value
-     * @return \Magento\Framework\DataObject
+     * @param mixed $value
+     * @return $this
      */
     public function setData($key, $value = null)
     {
@@ -277,6 +286,7 @@ class AbstractAddress extends AbstractExtensibleModel implements AddressModelInt
 
     /**
      * Check that address can have multiline attribute by this code (as street or some custom attribute)
+     *
      * @param string $code
      * @return bool
      */
@@ -394,6 +404,8 @@ class AbstractAddress extends AbstractExtensibleModel implements AddressModelInt
     }
 
     /**
+     * Get region id
+     *
      * @return int
      */
     public function getRegionId()
@@ -416,7 +428,9 @@ class AbstractAddress extends AbstractExtensibleModel implements AddressModelInt
     }
 
     /**
-     * @return int
+     * Get country
+     *
+     * @return string
      */
     public function getCountry()
     {
@@ -493,6 +507,8 @@ class AbstractAddress extends AbstractExtensibleModel implements AddressModelInt
     }
 
     /**
+     * Before save handler
+     *
      * @return $this
      */
     public function beforeSave()
@@ -562,88 +578,28 @@ class AbstractAddress extends AbstractExtensibleModel implements AddressModelInt
     }
 
     /**
-     * Validate address attribute values
+     * Validate address attribute values.
      *
-     *
-     *
-     * @return bool|array
-     * @SuppressWarnings(PHPMD.CyclomaticComplexity)
-     * @SuppressWarnings(PHPMD.NPathComplexity)
+     * @return array|bool
      */
     public function validate()
     {
         if ($this->getShouldIgnoreValidation()) {
             return true;
         }
-        
-        $errors = [];
-        if (!\Zend_Validate::is($this->getFirstname(), 'NotEmpty')) {
-            $errors[] = __('%fieldName is a required field.', ['fieldName' => 'firstname']);
-        }
 
-        if (!\Zend_Validate::is($this->getLastname(), 'NotEmpty')) {
-            $errors[] = __('%fieldName is a required field.', ['fieldName' => 'lastname']);
-        }
-
-        if (!\Zend_Validate::is($this->getStreetLine(1), 'NotEmpty')) {
-            $errors[] = __('%fieldName is a required field.', ['fieldName' => 'street']);
-        }
-
-        if (!\Zend_Validate::is($this->getCity(), 'NotEmpty')) {
-            $errors[] = __('%fieldName is a required field.', ['fieldName' => 'city']);
-        }
-
-        if ($this->isTelephoneRequired()) {
-            if (!\Zend_Validate::is($this->getTelephone(), 'NotEmpty')) {
-                $errors[] = __('%fieldName is a required field.', ['fieldName' => 'telephone']);
-            }
-        }
-
-        if ($this->isFaxRequired()) {
-            if (!\Zend_Validate::is($this->getFax(), 'NotEmpty')) {
-                $errors[] = __('%fieldName is a required field.', ['fieldName' => 'fax']);
-            }
-        }
-
-        if ($this->isCompanyRequired()) {
-            if (!\Zend_Validate::is($this->getCompany(), 'NotEmpty')) {
-                $errors[] = __('%fieldName is a required field.', ['fieldName' => 'company']);
-            }
-        }
-
-        $_havingOptionalZip = $this->_directoryData->getCountriesWithOptionalZip();
-        if (!in_array(
-            $this->getCountryId(),
-            $_havingOptionalZip
-        ) && !\Zend_Validate::is(
-            $this->getPostcode(),
-            'NotEmpty'
-        )
-        ) {
-            $errors[] = __('%fieldName is a required field.', ['fieldName' => 'postcode']);
-        }
-
-        if (!\Zend_Validate::is($this->getCountryId(), 'NotEmpty')) {
-            $errors[] = __('%fieldName is a required field.', ['fieldName' => 'countryId']);
-        }
-
-        if ($this->getCountryModel()->getRegionCollection()->getSize() && !\Zend_Validate::is(
-            $this->getRegionId(),
-            'NotEmpty'
-        ) && $this->_directoryData->isRegionRequired(
-            $this->getCountryId()
-        )
-        ) {
-            $errors[] = __('%fieldName is a required field.', ['fieldName' => 'regionId']);
-        }
+        $errors = $this->compositeValidator->validate($this);
 
         if (empty($errors)) {
             return true;
         }
+
         return $errors;
     }
 
     /**
+     * Create region instance
+     *
      * @return \Magento\Directory\Model\Region
      */
     protected function _createRegionInstance()
@@ -652,6 +608,8 @@ class AbstractAddress extends AbstractExtensibleModel implements AddressModelInt
     }
 
     /**
+     * Create country instance
+     *
      * @return \Magento\Directory\Model\Country
      */
     protected function _createCountryInstance()
@@ -661,6 +619,7 @@ class AbstractAddress extends AbstractExtensibleModel implements AddressModelInt
 
     /**
      * Unset Region from address
+     *
      * @return $this
      * @since 100.2.0
      */
@@ -670,6 +629,8 @@ class AbstractAddress extends AbstractExtensibleModel implements AddressModelInt
     }
 
     /**
+     * Is company required
+     *
      * @return bool
      * @since 100.2.0
      */
@@ -679,6 +640,8 @@ class AbstractAddress extends AbstractExtensibleModel implements AddressModelInt
     }
 
     /**
+     * Is telephone required
+     *
      * @return bool
      * @since 100.2.0
      */
@@ -688,6 +651,8 @@ class AbstractAddress extends AbstractExtensibleModel implements AddressModelInt
     }
 
     /**
+     * Is fax required
+     *
      * @return bool
      * @since 100.2.0
      */
